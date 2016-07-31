@@ -42,7 +42,10 @@ with open("save.yaml") as json_file:
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
     bot.sendMessage(update.message.chat_id, text='Hi!')
-    save[update.message.chat_id] = {}
+    if update.message.chat_id not in save:
+        save[update.message.chat_id] = {}
+    if "stations" not in save[update.message.chat_id]:
+        save[update.message.chat_id]["stations"] = []
 
 
 def help_message(bot, update):
@@ -62,15 +65,15 @@ def image(bot, update):
 
 
 def getstations(bot, update, args):
+    if not args:
+        bot.sendMessage(update.message.chat_id, text="Verwendung:\n/add [Stationenname]")
+        return ConversationHandler.END
     userinput = " ".join(args)
     print(userinput)
     choice = wl.fuzzy_stationname(userinput)
-    if update.message.chat_id not in save:
-        save[update.message.chat_id] = {}
-        print("NEUER KEY")
     save[update.message.chat_id]["choice"] = choice
     pprint(choice)
-    message = ""
+    message = "Es wurden mehrere Stationen gefunden.\nBitte gib die Nummer der gewünschten Station an:\n"
     prev_percentage = choice[0][1]
     i = 1
     for name, percentage, stationId in choice:
@@ -95,8 +98,6 @@ def select(bot, update):
     if update.message.text.isdigit():
         selected_station = save[update.message.chat_id]["choice"][int(update.message.text) - 1]
         pprint(selected_station)
-        if "stations" not in save[update.message.chat_id]:
-            save[update.message.chat_id]["stations"] = []
         save[update.message.chat_id]["stations"].append({"name": selected_station[0], "id": selected_station[2]})
         bot.sendMessage(update.message.chat_id,
                         text="Station '{station}' hinzugefügt".format(station=selected_station[0]))
@@ -115,10 +116,15 @@ def cancel(bot, update):
 
 
 def list_stations(bot, update):
-    message = ""
-    for station in save[update.message.chat_id]["stations"]:
-        message += station["name"] + "\n"
-    bot.sendMessage(update.message.chat_id, text=message)
+    if save[update.message.chat_id]["stations"]:
+        message = ""
+        for station in save[update.message.chat_id]["stations"]:
+            message += station["name"] + "\n"
+        bot.sendMessage(update.message.chat_id, text=message)
+    else:
+        bot.sendMessage(update.message.chat_id,
+                        text="Du hast noch keine Stationen hinzugefügt\n"
+                             "mit /add kannst du eine neue Station hinzufügen")
 
 
 def main():
