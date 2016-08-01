@@ -33,15 +33,31 @@ class WienerLinien:
         return countdowns
 
     def fuzzy_stationname(self, userinput):
-        return process.extract(userinput, self.stationNames, limit=6, scorer=fuzz.partial_ratio)
+        output = process.extract(userinput, self.stationNames, limit=6, scorer=fuzz.partial_ratio)
+        choice = []
+        for i in range(len(output)):
+            if i == 0:
+                diff = 0
+            else:
+                diff = output[i][1] - output[i - 1][1]
+            if output[i][1] >= 55:
+                if diff >= -7:
+                    choice.append(output[i])
+                else:
+                    break
+
+        return choice
 
     def askStation(self):
         while True:
-            result = self.fuzzyStationName(input())
+            result = self.fuzzy_stationname(input())
             print(result)
 
             number = int(input())
             pprint(result[number - 1][2])
+
+    def getStationInfo(self, stationId):
+        return self.stations[str(stationId)]
 
 
 def main():
@@ -49,7 +65,7 @@ def main():
 
     # pprint(wl.stations["214461789"])
     # pprint(wl.nexttrains(4431))
-    wl.askStation()
+    pprint(wl.fuzzy_stationname("Heiligenstadt"))
 
 
 if __name__ == '__main__':

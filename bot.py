@@ -41,8 +41,8 @@ SELECT, TEST = range(2)
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
-    bot.sendMessage(update.message.chat_id, text='Hallo!')
-    save.user(update.message.chat_id)
+    bot.sendMessage(update.message.chat_id, text='Hallo, {name}!'.format(name=update.message.from_user.first_name))
+    save.user(update.message.chat_id, update.message.from_user.first_name, update.message.from_user.last_name)
 
 
 def help_message(bot, update):
@@ -61,7 +61,7 @@ def image(bot, update):
     bot.sendMessage(update.message.chat_id, text="Bild")
 
 
-def getstations(bot, update, args):
+def addstation(bot, update, args):
     if not args:
         bot.sendMessage(update.message.chat_id, text="Verwendung:\n/add [Stationenname]")
         return ConversationHandler.END
@@ -71,28 +71,23 @@ def getstations(bot, update, args):
 
     save.save_choice(update.message.chat_id, choice)
     pprint(choice)
-    message = "Es wurden mehrere Stationen gefunden.\nBitte gib die Nummer der gewünschten Station an:\n"
-    prev_percentage = choice[0][1]
-    i = 1
-    keyboard = []
-    for name, percentage, stationId in choice:
-        if prev_percentage - percentage >= 10 or percentage <= 50:
-            break
-        message += str(i) + ": " + name + "\n"
-        keyboard.append([InlineKeyboardButton(name, callback_data=str(i))])
-        i += 1
-        prev_percentage = percentage
-    print(message)
-    if message and i > 2:
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        bot.sendMessage(update.message.chat_id, text=message, reply_markup=reply_markup)
-    elif i == 2:
-        bot.sendMessage(update.message.chat_id, text=message)
-        return ConversationHandler.END
-    else:
+    if not choice:
         bot.sendMessage(update.message.chat_id, text="Keine Station gefunden")
         return ConversationHandler.END
-    return SELECT
+    elif len(choice) == 1:
+        save.add_station(update.message.chat_id, {"name": choice[0][0], "id": choice[0][2]})
+        bot.sendMessage(update.message.chat_id, text="Station '{station}' hinzugefügt".format(station=choice[0][0]))
+
+    else:
+        message = "Es wurden mehrere Stationen gefunden.\nBitte gib die Nummer der gewünschten Station an:\n"
+        keyboard = []
+        i = 1
+        for name, percentage, stationId in choice:
+            keyboard.append([InlineKeyboardButton(name, callback_data=str(i))])
+            i += 1
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        bot.sendMessage(update.message.chat_id, text=message, reply_markup=reply_markup)
+        return SELECT
 
 
 def select(bot, update):
@@ -101,6 +96,7 @@ def select(bot, update):
         selected_station = save.get_choice(query.message.chat_id)[int(query.data) - 1]
         pprint(selected_station)
         save.add_station(query.message.chat_id, {"name": selected_station[0], "id": selected_station[2]})
+        print(selected_station[0][0])
         bot.editMessageText(text="Station '{station}' hinzugefügt".format(station=selected_station[0]),
                             chat_id=query.message.chat_id,
                             message_id=query.message.message_id)
@@ -122,6 +118,7 @@ def list_stations(bot, update):
     if stations:
         message = ""
         for station in stations:
+            pprint(wl.getStationInfo(station["id"]))
             message += station["name"] + "\n"
         bot.sendMessage(update.message.chat_id, text=message)
     else:
@@ -140,28 +137,28 @@ def main():
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_message))
-    # dp.add_handler(CommandHandler("station", getstations))
     dp.add_handler(CommandHandler("list", list_stations))
-    updater.dispatcher.add_handler(CallbackQueryHandler(select))
+    dp.add_handler(CommandHandler('add', addstation, pass_args=True))
+    dp.add_handler(CallbackQueryHandler(select))
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('add', getstations, pass_args=True)],
+    # conv_handler = ConversationHandler(
+    #     entry_points=[],
+    #
+    #     states={
+    #         #
+    #         #     PHOTO: [MessageHandler([Filters.photo], photo),
+    #         #             CommandHandler('skip', skip_photo)],
+    #         #
+    #         #     LOCATION: [MessageHandler([Filters.location], location),
+    #         #                CommandHandler('skip', skip_location)],
+    #
+    #         SELECT: [MessageHandler([Filters.text], select)]
+    #     },
+    #
+    #     fallbacks=[CommandHandler('cancel', cancel)]
+    # )
 
-        states={
-            #
-            #     PHOTO: [MessageHandler([Filters.photo], photo),
-            #             CommandHandler('skip', skip_photo)],
-            #
-            #     LOCATION: [MessageHandler([Filters.location], location),
-            #                CommandHandler('skip', skip_location)],
-
-            SELECT: [MessageHandler([Filters.text], select)]
-        },
-
-        fallbacks=[CommandHandler('cancel', cancel)]
-    )
-
-    dp.add_handler(conv_handler)
+    # dp.add_handler(conv_handler)
 
     # on noncommand i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler([Filters.text], echo))

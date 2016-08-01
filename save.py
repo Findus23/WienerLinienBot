@@ -12,11 +12,12 @@ class PersistentData:
         with open('save.yaml', 'w') as outfile:
             outfile.write(yaml.dump(self.save, default_flow_style=False))
 
-    def user(self, chat_id):
+    def user(self, chat_id, firstname, lastname):
         if chat_id not in self.save:
             self.save[chat_id] = {}
         if "stations" not in self.save[chat_id] or self.save[chat_id]["stations"] is None:
             self.save[chat_id]["stations"] = []
+        self.save[chat_id]["name"] = firstname + " " + lastname
 
     def save_choice(self, chat_id, choice):
         self.save[chat_id]["choice"] = choice
