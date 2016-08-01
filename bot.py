@@ -19,10 +19,12 @@ import logging
 from pprint import pprint
 
 import yaml
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler
 
 from config import *
 from wienerLinien import WienerLinien
+from save import PersistentData
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -31,25 +33,20 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 wl = WienerLinien("stationen/cache/current.json")
+save = PersistentData()
 
 SELECT, TEST = range(2)
-with open("save.yaml") as json_file:
-    save = yaml.load(json_file)
-    pprint(save)
 
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
-    bot.sendMessage(update.message.chat_id, text='Hi!')
-    if update.message.chat_id not in save:
-        save[update.message.chat_id] = {}
-    if "stations" not in save[update.message.chat_id]:
-        save[update.message.chat_id]["stations"] = []
+    bot.sendMessage(update.message.chat_id, text='Hallo!')
+    save.user(update.message.chat_id)
 
 
 def help_message(bot, update):
-    bot.sendMessage(update.message.chat_id, text='Help!')
+    bot.sendMessage(update.message.chat_id, text='Hilfetext')
 
 
 def echo(bot, update):
@@ -71,20 +68,24 @@ def getstations(bot, update, args):
     userinput = " ".join(args)
     print(userinput)
     choice = wl.fuzzy_stationname(userinput)
-    save[update.message.chat_id]["choice"] = choice
+
+    save.save_choice(update.message.chat_id, choice)
     pprint(choice)
     message = "Es wurden mehrere Stationen gefunden.\nBitte gib die Nummer der gewünschten Station an:\n"
     prev_percentage = choice[0][1]
     i = 1
+    keyboard = []
     for name, percentage, stationId in choice:
         if prev_percentage - percentage >= 10 or percentage <= 50:
             break
         message += str(i) + ": " + name + "\n"
+        keyboard.append([InlineKeyboardButton(name, callback_data=str(i))])
         i += 1
         prev_percentage = percentage
     print(message)
     if message and i > 2:
-        bot.sendMessage(update.message.chat_id, text=message)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        bot.sendMessage(update.message.chat_id, text=message, reply_markup=reply_markup)
     elif i == 2:
         bot.sendMessage(update.message.chat_id, text=message)
         return ConversationHandler.END
@@ -95,13 +96,14 @@ def getstations(bot, update, args):
 
 
 def select(bot, update):
-    if update.message.text.isdigit():
-        selected_station = save[update.message.chat_id]["choice"][int(update.message.text) - 1]
+    query = update.callback_query
+    if query.data.isdigit():
+        selected_station = save.get_choice(query.message.chat_id)[int(query.data) - 1]
         pprint(selected_station)
-        save[update.message.chat_id]["stations"].append({"name": selected_station[0], "id": selected_station[2]})
-        bot.sendMessage(update.message.chat_id,
-                        text="Station '{station}' hinzugefügt".format(station=selected_station[0]))
-        del save[update.message.chat_id]["choice"]
+        save.add_station(query.message.chat_id, {"name": selected_station[0], "id": selected_station[2]})
+        bot.editMessageText(text="Station '{station}' hinzugefügt".format(station=selected_station[0]),
+                            chat_id=query.message.chat_id,
+                            message_id=query.message.message_id)
         return ConversationHandler.END
 
     else:
@@ -111,14 +113,15 @@ def select(bot, update):
 
 def cancel(bot, update):
     bot.sendMessage(update.message.chat_id, text="Aktion abgebrochen")
-    del save[update.message.chat_id]["choice"]
+    save.delete_choice(update.message.chat_id)
     return ConversationHandler.END
 
 
 def list_stations(bot, update):
-    if save[update.message.chat_id]["stations"]:
+    stations = save.get_stations(update.message.chat_id)
+    if stations:
         message = ""
-        for station in save[update.message.chat_id]["stations"]:
+        for station in stations:
             message += station["name"] + "\n"
         bot.sendMessage(update.message.chat_id, text=message)
     else:
@@ -139,6 +142,7 @@ def main():
     dp.add_handler(CommandHandler("help", help_message))
     # dp.add_handler(CommandHandler("station", getstations))
     dp.add_handler(CommandHandler("list", list_stations))
+    updater.dispatcher.add_handler(CallbackQueryHandler(select))
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('add', getstations, pass_args=True)],
@@ -174,8 +178,7 @@ def main():
     # start_polling() is non-blocking and will stop the bot gracefully.
     updater.idle()
     print("------------------------------------------------------------------------")  #
-    with open('save.yaml', 'w') as outfile:
-        outfile.write(yaml.dump(save, default_flow_style=False))
+    save.export()
 
 
 if __name__ == '__main__':
