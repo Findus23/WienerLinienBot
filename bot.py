@@ -28,7 +28,7 @@ from save import PersistentData
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
+                    level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def addstation(bot, update, args):
         bot.sendMessage(update.message.chat_id, text="Station '{station}' hinzugefügt".format(station=choice[0][0]))
 
     else:
-        message = "Es wurden mehrere Stationen gefunden.\nBitte gib die Nummer der gewünschten Station an:\n"
+        message = "Es wurden mehrere Stationen gefunden.\nBitte wähle die gewünschten Station aus:"
         keyboard = []
         i = 1
         for name, percentage, stationId in choice:
@@ -127,6 +127,20 @@ def list_stations(bot, update):
                              "mit /add kannst du eine neue Station hinzufügen")
 
 
+def departures(bot, update):
+    message = ""
+    stations = save.get_stations(update.message.chat_id)
+    for station in stations:
+        for platform in wl.get_platforms(station["id"]):
+            if "RBL_NUMMER" in platform and platform["RBL_NUMMER"]:
+                dep, line, towards = wl.nexttrains(platform["RBL_NUMMER"])
+                message += "{station} Linie {line} Richtung {richtung}: {min}\n".format(station=station["name"],
+                                                                           richtung=towards,
+                                                                           line=line,
+                                                                           min=", ".join(map(str, dep)))
+    bot.sendMessage(update.message.chat_id, text=message)
+
+
 def main():
     # Create the EventHandler and pass it your bot's token.
     updater = Updater(TOKEN)
@@ -139,6 +153,8 @@ def main():
     dp.add_handler(CommandHandler("help", help_message))
     dp.add_handler(CommandHandler("list", list_stations))
     dp.add_handler(CommandHandler('add', addstation, pass_args=True))
+    dp.add_handler(CommandHandler("check", departures))
+
     dp.add_handler(CallbackQueryHandler(select))
 
     # conv_handler = ConversationHandler(
